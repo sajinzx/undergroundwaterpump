@@ -130,13 +130,17 @@ const Dashboard = () => {
 
         <div className="card">
           <div className="card-header">
-            <span>Water Dispensing</span>
+            <span>Physical Controls</span>
             <Power size={18} color="#f43f5e" />
           </div>
-          <div className="card-value">{data.dispensingStatus ? 'ACTIVE' : 'INACTIVE'}</div>
-          <div className="card-subtitle">Solenoid Valve Status</div>
+          <div className="card-value" style={{fontSize: '1.2rem', marginBottom: '0.25rem'}}>
+            Push Button: {data.dispensingStatus ? 'PRESSED' : 'RELEASED'}
+          </div>
+          <div className="card-subtitle" style={{marginBottom: '0.5rem'}}>
+            Solenoid Valve: {data.solenoidStatus ? 'OPEN' : 'CLOSED'}
+          </div>
           <div className={`status-indicator ${data.solenoidStatus ? 'open' : 'closed'}`}>
-            {data.solenoidStatus ? 'OPEN' : 'CLOSED'}
+            {data.solenoidStatus ? 'VALVE OPEN' : 'VALVE CLOSED'}
           </div>
         </div>
       </div>

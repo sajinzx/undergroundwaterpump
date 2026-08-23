@@ -69,7 +69,7 @@ void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP); // Assuming button is active LOW (connected to GND)
 
   pinMode(CONTROL_PIN, OUTPUT);
-  pinMode(SOLENOID_PIN, OUTPUT);
+  pinMode(SOLENOID_PIN, INPUT_PULLUP);
   
   pinMode(GOOD_WATER_PIN, OUTPUT);
   pinMode(MEDIUM_WATER_PIN, OUTPUT);
@@ -77,7 +77,6 @@ void setup() {
 
   // Initialize outputs (Active LOW logic: HIGH means OFF)
   digitalWrite(CONTROL_PIN, HIGH);
-  digitalWrite(SOLENOID_PIN, HIGH);
 
   digitalWrite(GOOD_WATER_PIN, LOW);
   digitalWrite(MEDIUM_WATER_PIN, LOW);
@@ -148,20 +147,22 @@ void loop() {
     digitalWrite(LOW_WATER_PIN, HIGH);
   }
 
-  // 5. Water Dispensing Logic (Push Button + Solenoid, Active LOW)
-  // Check if button is pressed. Using INPUT_PULLUP, so LOW = pressed.
+  // 5. Water Dispensing Logic (Monitoring Only)
+  // Check physical states (Active LOW)
   buttonPressed = (digitalRead(BUTTON_PIN) == LOW); 
+  solenoidStatus = (digitalRead(SOLENOID_PIN) == LOW);
   
   if (buttonPressed) {
-    solenoidStatus = true;
     dispensingStatus = true;
-    digitalWrite(SOLENOID_PIN, LOW); // ON
-    Serial.println("-> Dispensing Button PRESSED. Solenoid OPEN.");
+    Serial.println("-> Physical Dispensing Button is PRESSED.");
   } else {
-    solenoidStatus = false;
     dispensingStatus = false;
-    digitalWrite(SOLENOID_PIN, HIGH); // OFF
   }
+  
+  if (solenoidStatus) {
+    Serial.println("-> Physical Solenoid Valve is OPEN.");
+  }
+
 
   Serial.println("---------------------------------");
   delay(500); // 500ms delay for stability and polling frequency
