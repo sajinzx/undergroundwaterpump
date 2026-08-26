@@ -10,15 +10,18 @@ const Dashboard = () => {
     pumpStatus: false,
     tds: 0,
     waterQuality: 'Unknown',
-    solenoidStatus: false,
-    dispensingStatus: false
+    emergencyShutdown: false,
+    emergencyShutdownTime: null
   });
   
-  const [history, setHistory] = useState([]);
+  const [history, setHistory] = useState(() => {
+    const saved = sessionStorage.getItem('waterHistory');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [isOnline, setIsOnline] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  const API_BASE_URL = 'http://localhost:5000/api';
+  const API_BASE_URL = import.meta.env.DEV ? 'http://localhost:5000/api' : '/api';
 
   useEffect(() => {
     // Poll live status every 2 seconds
@@ -29,6 +32,24 @@ const Dashboard = () => {
           setData(response.data.data);
           setIsOnline(response.data.online);
           setLastUpdated(new Date().toLocaleTimeString());
+
+          // Update history
+          const timestamp = new Date();
+          const newHistoryItem = {
+            time: timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}),
+            tds: response.data.data.tds,
+            waterLevel: response.data.data.waterLevel
+          };
+
+          setHistory(prevHistory => {
+            const newHistory = [...prevHistory, newHistoryItem];
+            // Keep only the last 20 readings to avoid clutter and huge storage
+            if (newHistory.length > 20) {
+              newHistory.shift();
+            }
+            sessionStorage.setItem('waterHistory', JSON.stringify(newHistory));
+            return newHistory;
+          });
         } else {
           setIsOnline(false);
         }
@@ -37,38 +58,29 @@ const Dashboard = () => {
       }
     };
 
-    // Poll history every 10 seconds
-    const fetchHistory = async () => {
-      try {
-        const response = await axios.get(`${API_BASE_URL}/readings/history?limit=20`);
-        if (response.data.success) {
-          // Format data for recharts
-          const formattedData = response.data.data.map(item => ({
-            time: new Date(item.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}),
-            tds: item.tds,
-            waterLevel: item.waterLevel
-          }));
-          setHistory(formattedData);
-        }
-      } catch (error) {
-        console.error('Failed to fetch history');
-      }
-    };
-
     fetchStatus();
-    fetchHistory();
-
     const statusInterval = setInterval(fetchStatus, 2000);
-    const historyInterval = setInterval(fetchHistory, 10000);
 
     return () => {
       clearInterval(statusInterval);
-      clearInterval(historyInterval);
     };
   }, []);
 
   return (
     <div className="dashboard-container">
+      {data.emergencyShutdown && (
+        <div className="emergency-banner">
+          <div className="emergency-icon">⚠</div>
+          <div className="emergency-content">
+            <h2>EMERGENCY SHUTDOWN</h2>
+            <p>SYSTEM DISABLED</p>
+            {data.emergencyShutdownTime && (
+              <span className="emergency-time">Activated at: {data.emergencyShutdownTime}</span>
+            )}
+          </div>
+        </div>
+      )}
+
       <header className="header">
         <div>
           <h1>SMART WATER MANAGEMENT</h1>
@@ -80,6 +92,9 @@ const Dashboard = () => {
           <div className="status-badge">
             <span className={`status-dot ${isOnline ? 'online' : 'offline'}`}></span>
             ESP32 Connection: {isOnline ? 'ONLINE' : 'OFFLINE'}
+          </div>
+          <div className={`status-indicator ${data.emergencyShutdown ? 'bad' : 'good'}`} style={{ marginTop: 0 }}>
+            System Status: {data.emergencyShutdown ? 'SHUT DOWN' : 'NORMAL'}
           </div>
           {lastUpdated && (
             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Last Updated: {lastUpdated}</span>
@@ -125,22 +140,6 @@ const Dashboard = () => {
           <div className="card-subtitle">Total Dissolved Solids</div>
           <div className={`status-indicator ${data.waterQuality.toLowerCase()}`}>
             {data.waterQuality.toUpperCase()}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-header">
-            <span>Physical Controls</span>
-            <Power size={18} color="#f43f5e" />
-          </div>
-          <div className="card-value" style={{fontSize: '1.2rem', marginBottom: '0.25rem'}}>
-            Push Button: {data.dispensingStatus ? 'PRESSED' : 'RELEASED'}
-          </div>
-          <div className="card-subtitle" style={{marginBottom: '0.5rem'}}>
-            Solenoid Valve: {data.solenoidStatus ? 'OPEN' : 'CLOSED'}
-          </div>
-          <div className={`status-indicator ${data.solenoidStatus ? 'open' : 'closed'}`}>
-            {data.solenoidStatus ? 'VALVE OPEN' : 'VALVE CLOSED'}
           </div>
         </div>
       </div>
@@ -195,14 +194,6 @@ const Dashboard = () => {
             <span style={{ fontSize: '0.875rem' }}>TDS Check</span>
           </div>
 
-          <ArrowRight className="flow-arrow" size={20} />
-
-          <div className={`flow-node ${data.solenoidStatus ? 'active' : ''}`}>
-            <div className="flow-icon-container">
-              <Power color="#f43f5e" size={24} />
-            </div>
-            <span style={{ fontSize: '0.875rem' }}>Valve / Output</span>
-          </div>
         </div>
       </div>
 

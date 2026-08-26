@@ -7,8 +7,7 @@
 const int WATER_LEVEL_PIN = 36;  // HW-038 water level sensor (Analog)
 const int TDS_PIN = 34;          // TDS sensor (Analog)
 const int CONTROL_PIN = 23;      // Water pump relay (Active LOW)
-const int SOLENOID_PIN = 22;     // Solenoid valve relay (Active LOW)
-const int BUTTON_PIN = 21;       // Push button for dispensing water
+const int EMERGENCY_BUTTON_PIN = 21; // E-Stop button (Active LOW)
 
 const int GOOD_WATER_PIN = 25;   // LED for GOOD water quality
 const int MEDIUM_WATER_PIN = 26; // LED for AVERAGE water quality
@@ -32,9 +31,12 @@ bool pumpStatus = false;
 int tds = 0;
 String waterQuality = "Unknown";
 
-bool buttonPressed = false;
-bool solenoidStatus = false;
-bool dispensingStatus = false;
+bool emergencyShutdown = false;
+
+// Variables for debounce
+bool lastEmergencyButtonState = HIGH;
+unsigned long lastDebounceTime = 0;
+const unsigned long debounceDelay = 50;
 
 // ---------------------------------------------------------
 // API ENDPOINT HANDLER
@@ -47,14 +49,14 @@ void handleGetStatus() {
   json += "\"pumpStatus\":" + String(pumpStatus ? "true" : "false") + ",";
   json += "\"tds\":" + String(tds) + ",";
   json += "\"waterQuality\":\"" + waterQuality + "\",";
-  json += "\"solenoidStatus\":" + String(solenoidStatus ? "true" : "false") + ",";
-  json += "\"dispensingStatus\":" + String(dispensingStatus ? "true" : "false");
+  json += "\"emergencyShutdown\":" + String(emergencyShutdown ? "true" : "false");
   json += "}";
 
   // Enable CORS
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "application/json", json);
 }
+
 
 // ---------------------------------------------------------
 // SETUP
@@ -66,10 +68,9 @@ void setup() {
   // Configure Pins
   pinMode(WATER_LEVEL_PIN, INPUT);
   pinMode(TDS_PIN, INPUT);
-  pinMode(BUTTON_PIN, INPUT_PULLUP); // Assuming button is active LOW (connected to GND)
+  pinMode(EMERGENCY_BUTTON_PIN, INPUT_PULLUP); // Active LOW E-Stop
 
   pinMode(CONTROL_PIN, OUTPUT);
-  pinMode(SOLENOID_PIN, INPUT_PULLUP);
   
   pinMode(GOOD_WATER_PIN, OUTPUT);
   pinMode(MEDIUM_WATER_PIN, OUTPUT);
@@ -114,13 +115,33 @@ void loop() {
   Serial.print(" | TDS Value: ");
   Serial.println(tds);
 
-  // 3. Water Pump Logic (Active LOW)
-  if (waterLevel > 0) {
+  // 3. E-Stop & Water Pump Logic (Active LOW)
+  // Read and debounce emergency button
+  int reading = digitalRead(EMERGENCY_BUTTON_PIN);
+  if (reading != lastEmergencyButtonState) {
+    lastDebounceTime = millis();
+  }
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading == LOW) {
+      emergencyShutdown = true;
+    } else {
+      emergencyShutdown = false;
+    }
+  }
+  lastEmergencyButtonState = reading;
+
+  if (emergencyShutdown) {
+    pumpStatus = false;
+    digitalWrite(CONTROL_PIN, HIGH); // Force OFF
+    Serial.println("-> EMERGENCY SHUTDOWN ACTIVE. Pump Disabled.");
+  } 
+  else if (waterLevel > 300) {
     waterDetected = true;
     pumpStatus = true;
     digitalWrite(CONTROL_PIN, LOW); // ON
-    Serial.println("-> Water detected! Pump ON.");
-  } else {
+    Serial.println("-> Water detected via level sensor! Pump ON.");
+  } 
+  else {
     waterDetected = false;
     pumpStatus = false;
     digitalWrite(CONTROL_PIN, HIGH); // OFF
@@ -146,23 +167,6 @@ void loop() {
     digitalWrite(MEDIUM_WATER_PIN, LOW);
     digitalWrite(LOW_WATER_PIN, HIGH);
   }
-
-  // 5. Water Dispensing Logic (Monitoring Only)
-  // Check physical states (Active LOW)
-  buttonPressed = (digitalRead(BUTTON_PIN) == LOW); 
-  solenoidStatus = (digitalRead(SOLENOID_PIN) == LOW);
-  
-  if (buttonPressed) {
-    dispensingStatus = true;
-    Serial.println("-> Physical Dispensing Button is PRESSED.");
-  } else {
-    dispensingStatus = false;
-  }
-  
-  if (solenoidStatus) {
-    Serial.println("-> Physical Solenoid Valve is OPEN.");
-  }
-
 
   Serial.println("---------------------------------");
   delay(500); // 500ms delay for stability and polling frequency
