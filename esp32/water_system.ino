@@ -7,7 +7,6 @@
 const int WATER_LEVEL_PIN = 36;  // HW-038 water level sensor (Analog)
 const int TDS_PIN = 34;          // TDS sensor (Analog)
 const int CONTROL_PIN = 23;      // Water pump relay (Active LOW)
-const int EMERGENCY_BUTTON_PIN = 21; // E-Stop button (Active LOW)
 
 const int GOOD_WATER_PIN = 25;   // LED for GOOD water quality
 const int MEDIUM_WATER_PIN = 26; // LED for AVERAGE water quality
@@ -31,13 +30,6 @@ bool pumpStatus = false;
 int tds = 0;
 String waterQuality = "Unknown";
 
-bool emergencyShutdown = false;
-
-// Variables for debounce
-bool lastEmergencyButtonState = HIGH;
-unsigned long lastDebounceTime = 0;
-const unsigned long debounceDelay = 50;
-
 // ---------------------------------------------------------
 // API ENDPOINT HANDLER
 // ---------------------------------------------------------
@@ -48,8 +40,7 @@ void handleGetStatus() {
   json += "\"waterDetected\":" + String(waterDetected ? "true" : "false") + ",";
   json += "\"pumpStatus\":" + String(pumpStatus ? "true" : "false") + ",";
   json += "\"tds\":" + String(tds) + ",";
-  json += "\"waterQuality\":\"" + waterQuality + "\",";
-  json += "\"emergencyShutdown\":" + String(emergencyShutdown ? "true" : "false");
+  json += "\"waterQuality\":\"" + waterQuality + "\"";
   json += "}";
 
   // Enable CORS
@@ -68,7 +59,6 @@ void setup() {
   // Configure Pins
   pinMode(WATER_LEVEL_PIN, INPUT);
   pinMode(TDS_PIN, INPUT);
-  pinMode(EMERGENCY_BUTTON_PIN, INPUT_PULLUP); // Active LOW E-Stop
 
   pinMode(CONTROL_PIN, OUTPUT);
   
@@ -115,27 +105,8 @@ void loop() {
   Serial.print(" | TDS Value: ");
   Serial.println(tds);
 
-  // 3. E-Stop & Water Pump Logic (Active LOW)
-  // Read and debounce emergency button
-  int reading = digitalRead(EMERGENCY_BUTTON_PIN);
-  if (reading != lastEmergencyButtonState) {
-    lastDebounceTime = millis();
-  }
-  if ((millis() - lastDebounceTime) > debounceDelay) {
-    if (reading == LOW) {
-      emergencyShutdown = true;
-    } else {
-      emergencyShutdown = false;
-    }
-  }
-  lastEmergencyButtonState = reading;
-
-  if (emergencyShutdown) {
-    pumpStatus = false;
-    digitalWrite(CONTROL_PIN, HIGH); // Force OFF
-    Serial.println("-> EMERGENCY SHUTDOWN ACTIVE. Pump Disabled.");
-  } 
-  else if (waterLevel > 300) {
+  // 3. Water Pump Logic (Active LOW)
+  if (waterLevel > 300) {
     waterDetected = true;
     pumpStatus = true;
     digitalWrite(CONTROL_PIN, LOW); // ON
@@ -171,3 +142,4 @@ void loop() {
   Serial.println("---------------------------------");
   delay(500); // 500ms delay for stability and polling frequency
 }
+
